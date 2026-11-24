@@ -1,0 +1,6 @@
+{
+  "name": "Portal Resmi SDN Cikawao — Sumedang",
+  "description": "Website resmi dan sistem manajemen sekolah SDN Cikawao (NPSN 20208591), Kec. Pamulihan, Kab. Sumedang: Profil Kurikulum Merdeka, PKKS, Data Akademik Real-Time, Notifikasi Orang Tua, Jabar Beraksi, dan Siloka.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

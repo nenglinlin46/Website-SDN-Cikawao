@@ -1,0 +1,612 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Reusable Hardened Helpers ---
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'neng.linlin46@admin.sd.belajar.id';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
+    }
+
+    function isValidStr(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isValidScore(val, minVal, maxVal) {
+      return (val is int || val is float) && val >= minVal && val <= maxVal;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidAdminRole(data) {
+      return data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+        data.uid.matches('^[a-zA-Z0-9_-]+$') &&
+        isValidStr(data.email, 5, 180) &&
+        isValidStr(data.name, 2, 120) &&
+        isValidStr(data.roleLabel, 2, 80) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidNewsArticle(data) {
+      return isValidStr(data.title, 5, 160) &&
+        data.category in ['Akademik', 'Prestasi', 'Kegiatan', 'Kurikulum Merdeka'] &&
+        isValidStr(data.summary, 10, 360) &&
+        isValidStr(data.content, 20, 8000) &&
+        data.imageUrl is string && data.imageUrl.size() <= 500 &&
+        isValidStr(data.authorName, 2, 120) &&
+        isValidId(data.authorUid) &&
+        data.status in ['published', 'draft'] &&
+        isValidStr(data.publishedDate, 4, 40) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAnnouncement(data) {
+      return isValidStr(data.title, 4, 160) &&
+        isValidStr(data.message, 10, 2000) &&
+        data.priority in ['mendesak', 'penting', 'info'] &&
+        data.targetAudience in ['Semua Orang Tua', 'Fase A (Kelas 1-2)', 'Fase B (Kelas 3-4)', 'Fase C (Kelas 5-6)'] &&
+        data.isActive is bool &&
+        data.autoNotifyParents is bool &&
+        isValidId(data.authorUid) &&
+        isValidStr(data.authorName, 2, 120) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidParentSubscription(data) {
+      return isValidId(data.uid) &&
+        data.uid == request.auth.uid &&
+        isValidStr(data.parentName, 2, 120) &&
+        isValidStr(data.email, 5, 180) &&
+        data.rombelFilter in ['Semua', 'Kelas 1', 'Kelas 2', 'Kelas 3', 'Kelas 4', 'Kelas 5', 'Kelas 6'] &&
+        data.browserPushEnabled is bool &&
+        data.instantAlertEnabled is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidGalleryItem(data) {
+      return isValidStr(data.title, 3, 140) &&
+        data.category in ['KBM', 'Ekstrakurikuler', 'Fasilitas', 'Prestasi'] &&
+        isValidStr(data.caption, 5, 400) &&
+        data.mediaType in ['image', 'video'] &&
+        isValidStr(data.imageUrl, 1, 120000) &&
+        data.videoUrl is string && data.videoUrl.size() <= 750000 &&
+        data.videoMimeType is string && data.videoMimeType.size() <= 80 &&
+        data.videoFileName is string && data.videoFileName.size() <= 200 &&
+        isValidScore(data.videoChunkCount, 0, 80) &&
+        isValidStr(data.takenDate, 4, 40) &&
+        isValidId(data.authorUid) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidGalleryVideoChunk(data) {
+      return data.chunkIndex is int &&
+        data.chunkIndex >= 0 &&
+        data.chunkIndex <= 80 &&
+        isValidStr(data.data, 1, 750000) &&
+        isValidId(data.authorUid) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidStudentRecord(data) {
+      return data.nisn is string && data.nisn.size() >= 6 && data.nisn.size() <= 20 &&
+        data.nisn.matches('^[0-9]+$') &&
+        data.nik is string && data.nik.size() <= 20 &&
+        isValidStr(data.fullName, 2, 120) &&
+        data.rombel in ['Kelas 1', 'Kelas 2', 'Kelas 3', 'Kelas 4', 'Kelas 5', 'Kelas 6'] &&
+        data.gender in ['L', 'P'] &&
+        data.parentName is string && data.parentName.size() <= 120 &&
+        data.parentEmail is string && data.parentEmail.size() <= 180 &&
+        data.parentUid is string && data.parentUid.size() <= 128 &&
+        isValidScore(data.attendancePercent, 0, 100) &&
+        data.p5ProjectTitle is string && data.p5ProjectTitle.size() <= 160 &&
+        data.p5Status in ['Berkembang Sesuai Harapan', 'Sangat Berkembang', 'Mulai Berkembang'] &&
+        isValidScore(data.mathScore, 0, 100) &&
+        isValidScore(data.indoScore, 0, 100) &&
+        isValidScore(data.ipasScore, 0, 100) &&
+        isValidScore(data.pancasilaScore, 0, 100) &&
+        isValidScore(data.sundaScore, 0, 100) &&
+        data.teacherNote is string && data.teacherNote.size() <= 600 &&
+        isValidId(data.updatedByUid) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidNisnDirectoryEntry(data) {
+      return data.nisn is string && data.nisn.size() >= 6 && data.nisn.size() <= 20 &&
+        data.nisn.matches('^[0-9]+$') &&
+        isValidStr(data.fullName, 2, 120) &&
+        data.rombel in ['Kelas 1', 'Kelas 2', 'Kelas 3', 'Kelas 4', 'Kelas 5', 'Kelas 6'] &&
+        data.gender in ['L', 'P'] &&
+        data.nikHash is string && (data.nikHash.size() == 0 || (data.nikHash.size() == 64 && data.nikHash.matches('^[a-f0-9]+$'))) &&
+        isValidId(data.updatedByUid) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStudentLinkRequest(data) {
+      return isValidId(data.requesterUid) &&
+        isValidStr(data.requesterEmail, 5, 180) &&
+        isValidStr(data.requesterName, 2, 120) &&
+        isValidStr(data.studentName, 2, 120) &&
+        data.nisn is string && data.nisn.size() >= 6 && data.nisn.size() <= 20 &&
+        data.nisn.matches('^[0-9]+$') &&
+        data.rombel in ['Kelas 1', 'Kelas 2', 'Kelas 3', 'Kelas 4', 'Kelas 5', 'Kelas 6'] &&
+        data.status in ['pending', 'approved', 'rejected'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPkksItem(data) {
+      return isValidStr(data.code, 2, 24) &&
+        data.component in ['Manajerial', 'Kewirausahaan', 'Supervisi', 'Pengembangan Diri', 'Kurikulum Merdeka', 'Kemitraan'] &&
+        isValidStr(data.indicatorTitle, 5, 220) &&
+        isValidStr(data.evidenceSummary, 5, 600) &&
+        data.evidenceUrl is string && data.evidenceUrl.size() <= 500 &&
+        data.status in ['Lengkap', 'Dalam Proses', 'Perlu Dilengkapi'] &&
+        isValidScore(data.score, 0, 4) &&
+        isValidId(data.updatedByUid) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidJabarBeraksiReport(data) {
+      return isValidStr(data.title, 5, 160) &&
+        data.ekskulType in ['Pendidikan Karakter', 'Digitalisasi Pembelajaran', 'Kualitas Dapodik', 'SPMI', 'Analisis Daya Tampung'] &&
+        isValidStr(data.coachName, 2, 120) &&
+        isValidStr(data.activityDate, 4, 40) &&
+        isValidScore(data.participantCount, 1, 500) &&
+        isValidStr(data.description, 10, 2000) &&
+        isValidStr(data.characterOutcome, 5, 300) &&
+        data.imageUrl is string && data.imageUrl.size() <= 120000 &&
+        data.fileName is string && data.fileName.size() <= 200 &&
+        data.fileUrl is string && data.fileUrl.size() <= 700000 &&
+        data.fileSize is string && data.fileSize.size() <= 40 &&
+        data.status in ['terverifikasi', 'menunggu'] &&
+        isValidId(data.authorUid) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSilokaComplaint(data) {
+      return data.ticketCode is string && data.ticketCode.size() >= 6 && data.ticketCode.size() <= 30 &&
+        data.ticketCode.matches('^[A-Z0-9-]+$') &&
+        isValidId(data.reporterUid) &&
+        isValidStr(data.reporterName, 2, 120) &&
+        data.reporterRole in ['Orang Tua Murid', 'Masyarakat Sekitar', 'Komite Sekolah'] &&
+        data.category in ['Akademik & KBM', 'Sarana Prasarana', 'Layanan Administrasi', 'Keamanan & Lingkungan', 'Saran & Masukan'] &&
+        isValidStr(data.subject, 4, 160) &&
+        isValidStr(data.description, 10, 2000) &&
+        data.status in ['Diterima', 'Diproses', 'Selesai'] &&
+        data.adminResponse is string && data.adminResponse.size() <= 2000 &&
+        data.respondedBy is string && data.respondedBy.size() <= 120 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStaffMember(data) {
+      return isValidStr(data.fullName, 2, 120) &&
+        data.nip is string && data.nip.size() <= 30 &&
+        data.category in ['Guru', 'Tenaga Kependidikan'] &&
+        isValidStr(data.role, 2, 120) &&
+        data.assignment is string && data.assignment.size() <= 200 &&
+        data.rank is string && data.rank.size() <= 80 &&
+        data.employmentStatus in ['PNS', 'PPPK', 'PPPK Paruh Waktu', 'Honorer'] &&
+        data.photoUrl is string && data.photoUrl.size() <= 80000 &&
+        data.motto is string && data.motto.size() <= 280 &&
+        isValidScore(data.sortOrder, 1, 999) &&
+        isValidId(data.updatedByUid) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSilokaItem(data) {
+      return isValidStr(data.title, 5, 160) &&
+        data.pillar in ['Perencanaan', 'Pengorganisasian', 'Pelaksana', 'Program Unggulan', 'Evaluasi'] &&
+        isValidStr(data.coordinator, 2, 120) &&
+        isValidStr(data.periodDate, 4, 40) &&
+        data.targetGroup is string && data.targetGroup.size() <= 120 &&
+        isValidStr(data.outcome, 5, 300) &&
+        isValidStr(data.description, 10, 2000) &&
+        data.imageUrl is string && data.imageUrl.size() <= 120000 &&
+        data.fileName is string && data.fileName.size() <= 200 &&
+        data.fileUrl is string && data.fileUrl.size() <= 700000 &&
+        data.fileSize is string && data.fileSize.size() <= 40 &&
+        data.status in ['terpublikasi', 'draf'] &&
+        isValidId(data.authorUid) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    // Connection test document
+    match /test/connection {
+      allow get: if true;
+    }
+
+    // Admins
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && (isAdmin() || (isVerifiedUser() && request.auth.uid == uid));
+      allow list: if isBootstrappedAdmin();
+      allow create: if isValidId(uid) && isAdmin() && isValidAdminRole(incoming()) &&
+        incoming().keys().hasAll(['uid', 'email', 'name', 'roleLabel', 'createdAt']) &&
+        incoming().keys().hasOnly(['uid', 'email', 'name', 'roleLabel', 'createdAt']) &&
+        incoming().createdAt == request.time;
+      allow update: if isValidId(uid) && isAdmin() && isValidAdminRole(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['email', 'name', 'roleLabel']) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(uid) && isAdmin();
+    }
+
+    // News Articles
+    match /news/{newsId} {
+      allow get: if isValidId(newsId) && (resource.data.status == 'published' || isAdmin());
+      allow list: if resource.data.status == 'published' || isBootstrappedAdmin();
+      allow create: if isValidId(newsId) && isAdmin() && isValidNewsArticle(incoming()) &&
+        incoming().keys().hasAll(['title', 'category', 'summary', 'content', 'imageUrl', 'authorName', 'authorUid', 'status', 'publishedDate', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['title', 'category', 'summary', 'content', 'imageUrl', 'authorName', 'authorUid', 'status', 'publishedDate', 'createdAt', 'updatedAt']) &&
+        incoming().authorUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(newsId) && isAdmin() && isValidNewsArticle(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'category', 'summary', 'content', 'imageUrl', 'authorName', 'status', 'publishedDate', 'updatedAt']) &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(newsId) && isAdmin();
+    }
+
+    // Announcements (Auto Notifications)
+    match /announcements/{announcementId} {
+      allow get: if isValidId(announcementId) && (resource.data.isActive == true || isAdmin());
+      allow list: if resource.data.isActive == true || isBootstrappedAdmin();
+      allow create: if isValidId(announcementId) && isAdmin() && isValidAnnouncement(incoming()) &&
+        incoming().keys().hasAll(['title', 'message', 'priority', 'targetAudience', 'isActive', 'autoNotifyParents', 'authorUid', 'authorName', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['title', 'message', 'priority', 'targetAudience', 'isActive', 'autoNotifyParents', 'authorUid', 'authorName', 'createdAt', 'updatedAt']) &&
+        incoming().authorUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(announcementId) && isAdmin() && isValidAnnouncement(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'message', 'priority', 'targetAudience', 'isActive', 'autoNotifyParents', 'authorName', 'updatedAt']) &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(announcementId) && isAdmin();
+    }
+
+    // Parent Notification Subscriptions (PII Isolated)
+    match /parent_subscriptions/{uid} {
+      allow get: if isValidId(uid) && ((isVerifiedUser() && request.auth.uid == uid) || isAdmin());
+      allow list: if isBootstrappedAdmin() || (isVerifiedUser() && resource.data.uid == request.auth.uid);
+      allow create: if isValidId(uid) && isVerifiedUser() && request.auth.uid == uid &&
+        isValidParentSubscription(incoming()) &&
+        incoming().keys().hasAll(['uid', 'parentName', 'email', 'rombelFilter', 'browserPushEnabled', 'instantAlertEnabled', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['uid', 'parentName', 'email', 'rombelFilter', 'browserPushEnabled', 'instantAlertEnabled', 'createdAt', 'updatedAt']) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(uid) && isVerifiedUser() && request.auth.uid == uid &&
+        isValidParentSubscription(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['parentName', 'rombelFilter', 'browserPushEnabled', 'instantAlertEnabled', 'updatedAt']) &&
+        incoming().uid == existing().uid &&
+        incoming().email == existing().email &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(uid) && ((isVerifiedUser() && request.auth.uid == uid) || isAdmin());
+    }
+
+    // School Gallery (Photos & Activity Videos)
+    match /gallery/{itemId} {
+      allow get: if isValidId(itemId);
+      allow list: if true;
+      allow create: if isValidId(itemId) && isAdmin() && isValidGalleryItem(incoming()) &&
+        incoming().keys().hasAll([
+          'title', 'category', 'caption', 'mediaType', 'imageUrl',
+          'videoUrl', 'videoMimeType', 'videoFileName', 'videoChunkCount',
+          'takenDate', 'authorUid', 'createdAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'title', 'category', 'caption', 'mediaType', 'imageUrl',
+          'videoUrl', 'videoMimeType', 'videoFileName', 'videoChunkCount',
+          'takenDate', 'authorUid', 'createdAt'
+        ]) &&
+        incoming().authorUid == request.auth.uid &&
+        incoming().createdAt == request.time;
+      allow update: if isValidId(itemId) && isAdmin() && isValidGalleryItem(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'category', 'caption', 'mediaType', 'imageUrl',
+          'videoUrl', 'videoMimeType', 'videoFileName', 'videoChunkCount', 'takenDate'
+        ]) &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(itemId) && isAdmin();
+
+      match /video_chunks/{chunkId} {
+        allow get: if isValidId(itemId) && isValidId(chunkId);
+        allow list: if isValidId(itemId);
+        allow create: if isValidId(itemId) && isValidId(chunkId) && isAdmin() &&
+          isValidGalleryVideoChunk(incoming()) &&
+          incoming().keys().hasAll(['chunkIndex', 'data', 'authorUid', 'createdAt']) &&
+          incoming().keys().hasOnly(['chunkIndex', 'data', 'authorUid', 'createdAt']) &&
+          incoming().authorUid == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          exists(/databases/$(database)/documents/gallery/$(itemId));
+        allow update: if isValidId(itemId) && isValidId(chunkId) && isAdmin() &&
+          isValidGalleryVideoChunk(incoming()) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['chunkIndex', 'data']) &&
+          incoming().authorUid == existing().authorUid &&
+          incoming().createdAt == existing().createdAt &&
+          exists(/databases/$(database)/documents/gallery/$(itemId));
+        allow delete: if isValidId(itemId) && isValidId(chunkId) && isAdmin();
+      }
+    }
+
+    // Students & Real-time Academic Progress (PII & Academic Privacy Protected)
+    match /students/{studentId} {
+      allow get: if isValidId(studentId) && (
+        isAdmin() || (
+          isVerifiedUser() && (
+            resource.data.parentUid == request.auth.uid ||
+            (resource.data.parentEmail != '' && resource.data.parentEmail == request.auth.token.email)
+          )
+        )
+      );
+      allow list: if isBootstrappedAdmin() || (
+        isVerifiedUser() && (
+          resource.data.parentUid == request.auth.uid ||
+          resource.data.parentEmail == request.auth.token.email
+        )
+      );
+      allow create: if isValidId(studentId) && isAdmin() && isValidStudentRecord(incoming()) &&
+        incoming().keys().hasAll([
+          'nisn', 'nik', 'fullName', 'rombel', 'gender', 'parentName', 'parentEmail', 'parentUid',
+          'attendancePercent', 'p5ProjectTitle', 'p5Status', 'mathScore', 'indoScore',
+          'ipasScore', 'pancasilaScore', 'sundaScore', 'teacherNote', 'updatedByUid', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'nisn', 'nik', 'fullName', 'rombel', 'gender', 'parentName', 'parentEmail', 'parentUid',
+          'attendancePercent', 'p5ProjectTitle', 'p5Status', 'mathScore', 'indoScore',
+          'ipasScore', 'pancasilaScore', 'sundaScore', 'teacherNote', 'updatedByUid', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().updatedByUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(studentId) && isAdmin() && isValidStudentRecord(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'nisn', 'nik', 'fullName', 'rombel', 'gender', 'parentName', 'parentEmail', 'parentUid',
+          'attendancePercent', 'p5ProjectTitle', 'p5Status', 'mathScore', 'indoScore',
+          'ipasScore', 'pancasilaScore', 'sundaScore', 'teacherNote', 'updatedByUid', 'updatedAt'
+        ]) &&
+        incoming().updatedByUid == request.auth.uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(studentId) && isAdmin();
+    }
+
+    // Public NISN Search Directory (no grades, no emails, NIK stored only as one-way SHA-256 hash)
+    match /nisn_directory/{studentId} {
+      allow get: if isValidId(studentId);
+      allow list: if true;
+      allow create: if isValidId(studentId) && isAdmin() && isValidNisnDirectoryEntry(incoming()) &&
+        incoming().keys().hasAll([
+          'nisn', 'fullName', 'rombel', 'gender', 'nikHash', 'updatedByUid', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'nisn', 'fullName', 'rombel', 'gender', 'nikHash', 'updatedByUid', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().updatedByUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(studentId) && isAdmin() && isValidNisnDirectoryEntry(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'nisn', 'fullName', 'rombel', 'gender', 'nikHash', 'updatedByUid', 'updatedAt'
+        ]) &&
+        incoming().updatedByUid == request.auth.uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(studentId) && isAdmin();
+    }
+
+    // Student Link Requests
+    match /student_link_requests/{requestId} {
+      allow get: if isValidId(requestId) && (
+        isAdmin() || (isVerifiedUser() && resource.data.requesterUid == request.auth.uid)
+      );
+      allow list: if isBootstrappedAdmin() || (isVerifiedUser() && resource.data.requesterUid == request.auth.uid);
+      allow create: if isValidId(requestId) && isVerifiedUser() && isValidStudentLinkRequest(incoming()) &&
+        incoming().keys().hasAll(['requesterUid', 'requesterEmail', 'requesterName', 'studentName', 'nisn', 'rombel', 'status', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['requesterUid', 'requesterEmail', 'requesterName', 'studentName', 'nisn', 'rombel', 'status', 'createdAt', 'updatedAt']) &&
+        incoming().requesterUid == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(requestId) && isAdmin() && isValidStudentLinkRequest(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+        incoming().requesterUid == existing().requesterUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(requestId) && isAdmin();
+    }
+
+    // PKKS (Penilaian Kinerja Kepala Sekolah)
+    match /pkks_items/{itemId} {
+      allow get: if isValidId(itemId);
+      allow list: if true;
+      allow create: if isValidId(itemId) && isAdmin() && isValidPkksItem(incoming()) &&
+        incoming().keys().hasAll(['code', 'component', 'indicatorTitle', 'evidenceSummary', 'evidenceUrl', 'status', 'score', 'updatedByUid', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['code', 'component', 'indicatorTitle', 'evidenceSummary', 'evidenceUrl', 'status', 'score', 'updatedByUid', 'createdAt', 'updatedAt']) &&
+        incoming().updatedByUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(itemId) && isAdmin() && isValidPkksItem(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['code', 'component', 'indicatorTitle', 'evidenceSummary', 'evidenceUrl', 'status', 'score', 'updatedByUid', 'updatedAt']) &&
+        incoming().updatedByUid == request.auth.uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(itemId) && isAdmin();
+    }
+
+    // Jabar Beraksi (5 Pilar Program & Lampiran Berkas)
+    match /jabar_beraksi/{reportId} {
+      allow get: if isValidId(reportId) && (resource.data.status == 'terverifikasi' || isAdmin());
+      allow list: if resource.data.status == 'terverifikasi' || isBootstrappedAdmin();
+      allow create: if isValidId(reportId) && isVerifiedUser() && isValidJabarBeraksiReport(incoming()) &&
+        incoming().keys().hasAll([
+          'title', 'ekskulType', 'coachName', 'activityDate', 'participantCount',
+          'description', 'characterOutcome', 'imageUrl', 'fileName', 'fileUrl', 'fileSize',
+          'status', 'authorUid', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'title', 'ekskulType', 'coachName', 'activityDate', 'participantCount',
+          'description', 'characterOutcome', 'imageUrl', 'fileName', 'fileUrl', 'fileSize',
+          'status', 'authorUid', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().authorUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time && (
+          isAdmin() || incoming().status == 'menunggu'
+        );
+      allow update: if isValidId(reportId) && isAdmin() && isValidJabarBeraksiReport(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'ekskulType', 'coachName', 'activityDate', 'participantCount',
+          'description', 'characterOutcome', 'imageUrl', 'fileName', 'fileUrl', 'fileSize',
+          'status', 'updatedAt'
+        ]) &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(reportId) && isAdmin();
+    }
+
+    // SILOKA (Public Complaints & Feedback)
+    match /siloka_complaints/{complaintId} {
+      allow get: if isValidId(complaintId) && (
+        isAdmin() || (isVerifiedUser() && resource.data.reporterUid == request.auth.uid)
+      );
+      allow list: if isBootstrappedAdmin() || (isVerifiedUser() && resource.data.reporterUid == request.auth.uid);
+      allow create: if isValidId(complaintId) && isVerifiedUser() && isValidSilokaComplaint(incoming()) &&
+        incoming().keys().hasAll(['ticketCode', 'reporterUid', 'reporterName', 'reporterRole', 'category', 'subject', 'description', 'status', 'adminResponse', 'respondedBy', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['ticketCode', 'reporterUid', 'reporterName', 'reporterRole', 'category', 'subject', 'description', 'status', 'adminResponse', 'respondedBy', 'createdAt', 'updatedAt']) &&
+        incoming().reporterUid == request.auth.uid &&
+        incoming().status == 'Diterima' &&
+        incoming().adminResponse == '' &&
+        incoming().respondedBy == '' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(complaintId) && isVerifiedUser() && isValidSilokaComplaint(incoming()) && (
+        // Tier 1: Admin responds & updates status
+        (
+          isAdmin() &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminResponse', 'respondedBy', 'updatedAt']) &&
+          incoming().ticketCode == existing().ticketCode &&
+          incoming().reporterUid == existing().reporterUid &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time
+        ) ||
+        // Tier 2: Reporter edits description ONLY while status is still 'Diterima'
+        (
+          resource.data.reporterUid == request.auth.uid &&
+          existing().status == 'Diterima' &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['subject', 'description', 'updatedAt']) &&
+          incoming().ticketCode == existing().ticketCode &&
+          incoming().reporterUid == existing().reporterUid &&
+          incoming().status == existing().status &&
+          incoming().adminResponse == existing().adminResponse &&
+          incoming().respondedBy == existing().respondedBy &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time
+        )
+      );
+      allow delete: if isValidId(complaintId) && isAdmin();
+    }
+
+    // GTK (Guru & Tenaga Kependidikan Public Directory, Admin-Managed)
+    match /staff/{staffId} {
+      allow get: if isValidId(staffId);
+      allow list: if true;
+      allow create: if isValidId(staffId) && isAdmin() && isValidStaffMember(incoming()) &&
+        incoming().keys().hasAll([
+          'fullName', 'nip', 'category', 'role', 'assignment', 'rank',
+          'employmentStatus', 'photoUrl', 'motto', 'sortOrder', 'updatedByUid', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'fullName', 'nip', 'category', 'role', 'assignment', 'rank',
+          'employmentStatus', 'photoUrl', 'motto', 'sortOrder', 'updatedByUid', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().updatedByUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(staffId) && isAdmin() && isValidStaffMember(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'fullName', 'nip', 'category', 'role', 'assignment', 'rank',
+          'employmentStatus', 'photoUrl', 'motto', 'sortOrder', 'updatedByUid', 'updatedAt'
+        ]) &&
+        incoming().updatedByUid == request.auth.uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(staffId) && isAdmin();
+    }
+    // SILOKA (5 Pilar: Perencanaan, Pengorganisasian, Pelaksana, Program Unggulan, Evaluasi)
+    match /siloka_items/{itemId} {
+      allow get: if isValidId(itemId) && (resource.data.status == 'terpublikasi' || isAdmin());
+      allow list: if resource.data.status == 'terpublikasi' || isBootstrappedAdmin();
+      allow create: if isValidId(itemId) && isAdmin() && isValidSilokaItem(incoming()) &&
+        incoming().keys().hasAll([
+          'title', 'pillar', 'coordinator', 'periodDate', 'targetGroup', 'outcome',
+          'description', 'imageUrl', 'fileName', 'fileUrl', 'fileSize',
+          'status', 'authorUid', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'title', 'pillar', 'coordinator', 'periodDate', 'targetGroup', 'outcome',
+          'description', 'imageUrl', 'fileName', 'fileUrl', 'fileSize',
+          'status', 'authorUid', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().authorUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(itemId) && isAdmin() && isValidSilokaItem(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'pillar', 'coordinator', 'periodDate', 'targetGroup', 'outcome',
+          'description', 'imageUrl', 'fileName', 'fileUrl', 'fileSize',
+          'status', 'updatedAt'
+        ]) &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(itemId) && isAdmin();
+    }
+  }
+}

@@ -1,0 +1,357 @@
+{
+  "entities": {
+    "AdminRole": {
+      "title": "AdminRole",
+      "description": "Akun administrator resmi sekolah (Kepala Sekolah / Operator).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 180 },
+        "name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "roleLabel": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "name", "roleLabel", "createdAt"]
+    },
+    "NewsArticle": {
+      "title": "NewsArticle",
+      "description": "Berita dan artikel resmi kegiatan SDN Cikawao.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 5, "maxLength": 160 },
+        "category": { "type": "string", "enum": ["Akademik", "Prestasi", "Kegiatan", "Kurikulum Merdeka"] },
+        "summary": { "type": "string", "minLength": 10, "maxLength": 360 },
+        "content": { "type": "string", "minLength": 20, "maxLength": 8000 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "authorName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "status": { "type": "string", "enum": ["published", "draft"] },
+        "publishedDate": { "type": "string", "maxLength": 40 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "category", "summary", "content", "imageUrl", "authorName", "authorUid", "status", "publishedDate", "createdAt", "updatedAt"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Pengumuman penting sekolah dengan sistem notifikasi otomatis ke orang tua siswa.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 4, "maxLength": 160 },
+        "message": { "type": "string", "minLength": 10, "maxLength": 2000 },
+        "priority": { "type": "string", "enum": ["mendesak", "penting", "info"] },
+        "targetAudience": { "type": "string", "enum": ["Semua Orang Tua", "Fase A (Kelas 1-2)", "Fase B (Kelas 3-4)", "Fase C (Kelas 5-6)"] },
+        "isActive": { "type": "boolean" },
+        "autoNotifyParents": { "type": "boolean" },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "authorName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "message", "priority", "targetAudience", "isActive", "autoNotifyParents", "authorUid", "authorName", "createdAt", "updatedAt"]
+    },
+    "ParentSubscription": {
+      "title": "ParentSubscription",
+      "description": "Preferensi langganan notifikasi otomatis orang tua siswa.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "parentName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "email": { "type": "string", "format": "email", "maxLength": 180 },
+        "rombelFilter": { "type": "string", "enum": ["Semua", "Kelas 1", "Kelas 2", "Kelas 3", "Kelas 4", "Kelas 5", "Kelas 6"] },
+        "browserPushEnabled": { "type": "boolean" },
+        "instantAlertEnabled": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "parentName", "email", "rombelFilter", "browserPushEnabled", "instantAlertEnabled", "createdAt", "updatedAt"]
+    },
+    "GalleryItem": {
+      "title": "GalleryItem",
+      "description": "Dokumentasi foto dan video kegiatan belajar mengajar serta fasilitas SDN Cikawao.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 3, "maxLength": 140 },
+        "category": { "type": "string", "enum": ["KBM", "Ekstrakurikuler", "Fasilitas", "Prestasi"] },
+        "caption": { "type": "string", "minLength": 5, "maxLength": 400 },
+        "mediaType": { "type": "string", "enum": ["image", "video"] },
+        "imageUrl": { "type": "string", "minLength": 1, "maxLength": 120000 },
+        "videoUrl": { "type": "string", "maxLength": 750000 },
+        "videoMimeType": { "type": "string", "maxLength": 80 },
+        "videoFileName": { "type": "string", "maxLength": 200 },
+        "videoChunkCount": { "type": "number" },
+        "takenDate": { "type": "string", "maxLength": 40 },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "title", "category", "caption", "mediaType", "imageUrl",
+        "videoUrl", "videoMimeType", "videoFileName", "videoChunkCount",
+        "takenDate", "authorUid", "createdAt"
+      ]
+    },
+    "GalleryVideoChunk": {
+      "title": "GalleryVideoChunk",
+      "description": "Potongan data video terstruktur untuk dokumentasi video kegiatan galeri sekolah.",
+      "type": "object",
+      "properties": {
+        "chunkIndex": { "type": "number" },
+        "data": { "type": "string", "minLength": 1, "maxLength": 600000 },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["chunkIndex", "data", "authorUid", "createdAt"]
+    },
+    "StudentRecord": {
+      "title": "StudentRecord",
+      "description": "Data terintegrasi siswa dan capaian akademik Kurikulum Merdeka real-time.",
+      "type": "object",
+      "properties": {
+        "nisn": { "type": "string", "minLength": 6, "maxLength": 20, "pattern": "^[0-9]+$" },
+        "nik": { "type": "string", "maxLength": 20 },
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "rombel": { "type": "string", "enum": ["Kelas 1", "Kelas 2", "Kelas 3", "Kelas 4", "Kelas 5", "Kelas 6"] },
+        "gender": { "type": "string", "enum": ["L", "P"] },
+        "parentName": { "type": "string", "maxLength": 120 },
+        "parentEmail": { "type": "string", "maxLength": 180 },
+        "parentUid": { "type": "string", "maxLength": 128 },
+        "attendancePercent": { "type": "number" },
+        "p5ProjectTitle": { "type": "string", "maxLength": 160 },
+        "p5Status": { "type": "string", "enum": ["Berkembang Sesuai Harapan", "Sangat Berkembang", "Mulai Berkembang"] },
+        "mathScore": { "type": "number" },
+        "indoScore": { "type": "number" },
+        "ipasScore": { "type": "number" },
+        "pancasilaScore": { "type": "number" },
+        "sundaScore": { "type": "number" },
+        "teacherNote": { "type": "string", "maxLength": 600 },
+        "updatedByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "nisn", "nik", "fullName", "rombel", "gender", "parentName", "parentEmail", "parentUid",
+        "attendancePercent", "p5ProjectTitle", "p5Status", "mathScore", "indoScore",
+        "ipasScore", "pancasilaScore", "sundaScore", "teacherNote", "updatedByUid", "createdAt", "updatedAt"
+      ]
+    },
+    "NisnDirectoryEntry": {
+      "title": "NisnDirectoryEntry",
+      "description": "Direktori pencarian NISN siswa berbasis nama atau hash NIK satu arah tanpa mengekspos nilai atau NIK asli.",
+      "type": "object",
+      "properties": {
+        "nisn": { "type": "string", "minLength": 6, "maxLength": 20, "pattern": "^[0-9]+$" },
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "rombel": { "type": "string", "enum": ["Kelas 1", "Kelas 2", "Kelas 3", "Kelas 4", "Kelas 5", "Kelas 6"] },
+        "gender": { "type": "string", "enum": ["L", "P"] },
+        "nikHash": { "type": "string", "maxLength": 64 },
+        "updatedByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["nisn", "fullName", "rombel", "gender", "nikHash", "updatedByUid", "createdAt", "updatedAt"]
+    },
+    "StudentLinkRequest": {
+      "title": "StudentLinkRequest",
+      "description": "Permohonan penautan akun orang tua ke data akademik siswa.",
+      "type": "object",
+      "properties": {
+        "requesterUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "requesterEmail": { "type": "string", "format": "email", "maxLength": 180 },
+        "requesterName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "nisn": { "type": "string", "minLength": 6, "maxLength": 20, "pattern": "^[0-9]+$" },
+        "rombel": { "type": "string", "enum": ["Kelas 1", "Kelas 2", "Kelas 3", "Kelas 4", "Kelas 5", "Kelas 6"] },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["requesterUid", "requesterEmail", "requesterName", "studentName", "nisn", "rombel", "status", "createdAt", "updatedAt"]
+    },
+    "PkksItem": {
+      "title": "PkksItem",
+      "description": "Indikator dan bukti fisik Penilaian Kinerja Kepala Sekolah (PKKS).",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "component": { "type": "string", "enum": ["Manajerial", "Kewirausahaan", "Supervisi", "Pengembangan Diri", "Kurikulum Merdeka", "Kemitraan"] },
+        "indicatorTitle": { "type": "string", "minLength": 5, "maxLength": 220 },
+        "evidenceSummary": { "type": "string", "minLength": 5, "maxLength": 600 },
+        "evidenceUrl": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["Lengkap", "Dalam Proses", "Perlu Dilengkapi"] },
+        "score": { "type": "number" },
+        "updatedByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "component", "indicatorTitle", "evidenceSummary", "evidenceUrl", "status", "score", "updatedByUid", "createdAt", "updatedAt"]
+    },
+    "JabarBeraksiReport": {
+      "title": "JabarBeraksiReport",
+      "description": "Laporan dan berkas program Jabar Beraksi SDN Cikawao (Pendidikan Karakter, Digitalisasi Pembelajaran, Kualitas Dapodik, SPMI, Analisis Daya Tampung).",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 5, "maxLength": 160 },
+        "ekskulType": {
+          "type": "string",
+          "enum": [
+            "Pendidikan Karakter",
+            "Digitalisasi Pembelajaran",
+            "Kualitas Dapodik",
+            "SPMI",
+            "Analisis Daya Tampung"
+          ]
+        },
+        "coachName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "activityDate": { "type": "string", "maxLength": 40 },
+        "participantCount": { "type": "number" },
+        "description": { "type": "string", "minLength": 10, "maxLength": 2000 },
+        "characterOutcome": { "type": "string", "minLength": 5, "maxLength": 300 },
+        "imageUrl": { "type": "string", "maxLength": 120000 },
+        "fileName": { "type": "string", "maxLength": 200 },
+        "fileUrl": { "type": "string", "maxLength": 700000 },
+        "fileSize": { "type": "string", "maxLength": 40 },
+        "status": { "type": "string", "enum": ["terverifikasi", "menunggu"] },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "title", "ekskulType", "coachName", "activityDate", "participantCount",
+        "description", "characterOutcome", "imageUrl", "fileName", "fileUrl", "fileSize",
+        "status", "authorUid", "createdAt", "updatedAt"
+      ]
+    },
+    "SilokaComplaint": {
+      "title": "SilokaComplaint",
+      "description": "Tiket layanan pengaduan masyarakat dan orang tua (SILOKA).",
+      "type": "object",
+      "properties": {
+        "ticketCode": { "type": "string", "minLength": 6, "maxLength": 30, "pattern": "^[A-Z0-9\\-]+$" },
+        "reporterUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "reporterName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "reporterRole": { "type": "string", "enum": ["Orang Tua Murid", "Masyarakat Sekitar", "Komite Sekolah"] },
+        "category": { "type": "string", "enum": ["Akademik & KBM", "Sarana Prasarana", "Layanan Administrasi", "Keamanan & Lingkungan", "Saran & Masukan"] },
+        "subject": { "type": "string", "minLength": 4, "maxLength": 160 },
+        "description": { "type": "string", "minLength": 10, "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["Diterima", "Diproses", "Selesai"] },
+        "adminResponse": { "type": "string", "maxLength": 2000 },
+        "respondedBy": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ticketCode", "reporterUid", "reporterName", "reporterRole", "category", "subject", "description", "status", "adminResponse", "respondedBy", "createdAt", "updatedAt"]
+    },
+    "StaffMember": {
+      "title": "StaffMember",
+      "description": "Data Guru dan Tenaga Kependidikan (GTK) resmi SDN Cikawao.",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "nip": { "type": "string", "maxLength": 30 },
+        "category": { "type": "string", "enum": ["Guru", "Tenaga Kependidikan"] },
+        "role": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "assignment": { "type": "string", "maxLength": 200 },
+        "rank": { "type": "string", "maxLength": 80 },
+        "employmentStatus": { "type": "string", "enum": ["PNS", "PPPK", "PPPK Paruh Waktu", "Honorer"] },
+        "photoUrl": { "type": "string", "maxLength": 80000 },
+        "motto": { "type": "string", "maxLength": 280 },
+        "sortOrder": { "type": "number" },
+        "updatedByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "fullName", "nip", "category", "role", "assignment", "rank",
+        "employmentStatus", "photoUrl", "motto", "sortOrder", "updatedByUid", "createdAt", "updatedAt"
+      ]
+    },
+    "SilokaItem": {
+      "title": "SilokaItem",
+      "description": "Program dan dokumen 5 pilar manajemen SILOKA SDN Cikawao (Perencanaan, Pengorganisasian, Pelaksana, Program Unggulan, Evaluasi).",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 5, "maxLength": 160 },
+        "pillar": {
+          "type": "string",
+          "enum": ["Perencanaan", "Pengorganisasian", "Pelaksana", "Program Unggulan", "Evaluasi"]
+        },
+        "coordinator": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "periodDate": { "type": "string", "minLength": 4, "maxLength": 40 },
+        "targetGroup": { "type": "string", "maxLength": 120 },
+        "outcome": { "type": "string", "minLength": 5, "maxLength": 300 },
+        "description": { "type": "string", "minLength": 10, "maxLength": 2000 },
+        "imageUrl": { "type": "string", "maxLength": 120000 },
+        "fileName": { "type": "string", "maxLength": 200 },
+        "fileUrl": { "type": "string", "maxLength": 700000 },
+        "fileSize": { "type": "string", "maxLength": 40 },
+        "status": { "type": "string", "enum": ["terpublikasi", "draf"] },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "title", "pillar", "coordinator", "periodDate", "targetGroup", "outcome",
+        "description", "imageUrl", "fileName", "fileUrl", "fileSize",
+        "status", "authorUid", "createdAt", "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/admins/{uid}": {
+      "schema": { "$ref": "#/entities/AdminRole" },
+      "description": "Daftar admin terverifikasi SDN Cikawao."
+    },
+    "/news/{newsId}": {
+      "schema": { "$ref": "#/entities/NewsArticle" },
+      "description": "Berita terbaru sekolah."
+    },
+    "/announcements/{announcementId}": {
+      "schema": { "$ref": "#/entities/Announcement" },
+      "description": "Pengumuman penting dan pemicu notifikasi otomatis orang tua."
+    },
+    "/parent_subscriptions/{uid}": {
+      "schema": { "$ref": "#/entities/ParentSubscription" },
+      "description": "Preferensi notifikasi otomatis per orang tua."
+    },
+    "/gallery/{itemId}": {
+      "schema": { "$ref": "#/entities/GalleryItem" },
+      "description": "Galeri foto dan video dokumentasi SDN Cikawao."
+    },
+    "/gallery/{itemId}/video_chunks/{chunkId}": {
+      "schema": { "$ref": "#/entities/GalleryVideoChunk" },
+      "description": "Potongan data video untuk item video pada galeri sekolah."
+    },
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/StudentRecord" },
+      "description": "Data siswa terintegrasi dan perkembangan akademik real-time."
+    },
+    "/nisn_directory/{studentId}": {
+      "schema": { "$ref": "#/entities/NisnDirectoryEntry" },
+      "description": "Indeks pencarian NISN menggunakan nama siswa atau hash NIK."
+    },
+    "/student_link_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/StudentLinkRequest" },
+      "description": "Permohonan tautan akun orang tua ke profil siswa."
+    },
+    "/pkks_items/{itemId}": {
+      "schema": { "$ref": "#/entities/PkksItem" },
+      "description": "Komponen dan bukti fisik Penilaian Kinerja Kepala Sekolah (PKKS)."
+    },
+    "/jabar_beraksi/{reportId}": {
+      "schema": { "$ref": "#/entities/JabarBeraksiReport" },
+      "description": "Laporan kegiatan ekstrakurikuler transparan Jabar Beraksi."
+    },
+    "/siloka_complaints/{complaintId}": {
+      "schema": { "$ref": "#/entities/SilokaComplaint" },
+      "description": "Pengaduan dan aspirasi masyarakat melalui sistem SILOKA."
+    },
+    "/siloka_items/{itemId}": {
+      "schema": { "$ref": "#/entities/SilokaItem" },
+      "description": "Program dan dokumen manajemen SILOKA SDN Cikawao (Perencanaan, Pengorganisasian, Pelaksana, Program Unggulan, Evaluasi)."
+    },
+    "/staff/{staffId}": {
+      "schema": { "$ref": "#/entities/StaffMember" },
+      "description": "Direktori resmi Guru dan Tenaga Kependidikan (GTK) SDN Cikawao."
+    }
+  }
+}

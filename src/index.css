@@ -1,0 +1,245 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Fraunces", Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    scroll-behavior: smooth;
+    background-color: #FFFDF7;
+    color: #132A2E;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1, h2, .font-editorial {
+    font-family: var(--font-display);
+  }
+
+  button,
+  a,
+  [role="button"],
+  summary {
+    touch-action: manipulation;
+    transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
+      background-color 180ms ease,
+      border-color 180ms ease,
+      color 180ms ease,
+      box-shadow 180ms ease,
+      filter 180ms ease;
+  }
+
+  button:not(:disabled):active,
+  a:active,
+  [role="button"]:active {
+    transform: translateY(2px) scale(0.965);
+    filter: saturate(1.32) brightness(1.06);
+    box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.24), 0 8px 20px -4px rgba(16, 185, 129, 0.35);
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.portal-colorful-canvas {
+  background-color: #FFFDF7;
+  background-image:
+    radial-gradient(circle at 6% 8%, rgba(16, 185, 129, 0.12) 0%, transparent 36%),
+    radial-gradient(circle at 94% 12%, rgba(14, 165, 233, 0.13) 0%, transparent 38%),
+    radial-gradient(circle at 12% 58%, rgba(245, 158, 11, 0.10) 0%, transparent 36%),
+    radial-gradient(circle at 90% 78%, rgba(139, 92, 246, 0.11) 0%, transparent 38%);
+}
+
+.card-interactive {
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 180ms ease,
+    filter 180ms ease;
+}
+
+.card-interactive:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 24px -8px rgba(14, 165, 233, 0.18), 0 4px 10px -2px rgba(16, 185, 129, 0.12);
+}
+
+.card-interactive:active {
+  transform: translateY(1px) scale(0.985);
+  filter: saturate(1.22) brightness(1.03);
+}
+
+/* Tactile 3D button lift & push */
+.btn-3d {
+  box-shadow: 0 4px 0 rgba(15, 23, 42, 0.18), 0 8px 16px -4px rgba(16, 185, 129, 0.28);
+}
+
+.btn-3d:not(:disabled):hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05) saturate(1.1);
+}
+
+.btn-3d:not(:disabled):active {
+  transform: translateY(2px) scale(0.975);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.2), 0 0 0 4px rgba(245, 158, 11, 0.35);
+}
+
+/* 3D Icon Spring Interaction */
+.icon-3d-tile,
+.icon-3d-svg {
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), filter 180ms ease;
+}
+
+button:hover .icon-3d-tile,
+a:hover .icon-3d-tile,
+.card-interactive:hover .icon-3d-tile {
+  transform: translateY(-2px) scale(1.07) rotate(-3deg);
+  filter: brightness(1.06) saturate(1.15);
+}
+
+button:active .icon-3d-tile,
+a:active .icon-3d-tile,
+.card-interactive:active .icon-3d-tile,
+[data-tapped="true"] .icon-3d-tile {
+  transform: translateY(1px) scale(0.94);
+  filter: saturate(1.35) brightness(1.1);
+}
+
+/* Color pulse triggered dynamically by TapFeedbackOverlay on click/touch */
+[data-tapped="true"] {
+  box-shadow: 0 0 0 4px var(--tap-ring, rgba(16, 185, 129, 0.35)),
+    0 10px 26px -4px var(--tap-glow, rgba(14, 165, 233, 0.42)) !important;
+  filter: saturate(1.25) brightness(1.04);
+}
+
+@keyframes tap-ring-expand {
+  0% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(0.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(2.1);
+  }
+}
+
+@keyframes tap-ring-inner {
+  0% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scale(0.15);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.45);
+  }
+}
+
+@keyframes tap-element-ripple {
+  0% {
+    opacity: 0.65;
+    transform: translate(-50%, -50%) scale(0.08);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes tap-spark-fly {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate3d(0, 0, 0) scale(1.1) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate3d(var(--tx), var(--ty), 0) scale(0.2) rotate(140deg);
+  }
+}
+
+.animate-tap-ring {
+  animation: tap-ring-expand 480ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-tap-inner {
+  animation: tap-ring-inner 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-tap-element-ripple {
+  animation: tap-element-ripple 460ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-tap-spark {
+  animation: tap-spark-fly 500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Elegant Smooth Running Visi Misi Marquee */
+@keyframes visi-marquee-scroll {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@keyframes visi-shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.visi-marquee-mask {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    #000 6%,
+    #000 94%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    #000 6%,
+    #000 94%,
+    transparent 100%
+  );
+}
+
+.visi-marquee-track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+  animation: visi-marquee-scroll 34s linear infinite;
+}
+
+.visi-marquee-track-slow {
+  animation-duration: 38s;
+}
+
+.visi-marquee-wrapper:hover .visi-marquee-track,
+.visi-marquee-wrapper:focus-within .visi-marquee-track,
+.visi-marquee-track[data-paused="true"] {
+  animation-play-state: paused;
+}
+
+.visi-gradient-flow {
+  background-size: 200% 200%;
+  animation: visi-shimmer 10s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
