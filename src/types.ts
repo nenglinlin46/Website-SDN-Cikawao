@@ -259,3 +259,24 @@ export interface StaffMember {
   createdAt?: unknown;
   updatedAt?: unknown;
 }
+
+export interface ItAdminSession {
+  roleLabel: string;
+  phoneMasked: string;
+  token: string;
+}
+
+export interface ItAdminStatus {
+  configured: boolean;
+  mode: 'env' | 'claimed' | 'needs-setup';
+  roleLabel: string;
+}
+
+export interface DelegatedAdminRole {
+  uid: string;
+  email: string;
+  name: string;
+  roleLabel: string;
+  createdAt?: unknown;
+}
+

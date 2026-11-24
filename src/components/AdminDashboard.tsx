@@ -15,6 +15,7 @@ import {
   parseDaftarPdExcel,
   type DaftarPdParseResult,
 } from '../utils/daftarPdExcel';
+import { PortalLoginModal } from './PortalLoginModal';
 import { SafeImage } from './SafeImage';
 import type {
   AnnouncementPriority,
@@ -428,6 +429,15 @@ export const AdminDashboard: React.FC = () => {
   const {
     user,
     isAdmin,
+    isBootstrappedAdmin,
+    isFirebaseAdmin,
+    isItAdmin,
+    itAdminSession,
+    delegatedAdmins,
+    authLoading,
+    signInWithGoogle,
+    saveDelegatedAdmin,
+    removeDelegatedAdmin,
     news,
     announcements,
     gallery,
@@ -467,6 +477,13 @@ export const AdminDashboard: React.FC = () => {
 
   const [panel, setPanel] = useState<AdminPanelTab>('overview');
   const [statusFeedback, setStatusFeedback] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [delegateUid, setDelegateUid] = useState('');
+  const [delegateEmail, setDelegateEmail] = useState('');
+  const [delegateName, setDelegateName] = useState('');
+  const [delegateRoleLabel, setDelegateRoleLabel] = useState('Tim IT SDN Cikawao');
+  const [delegateSaving, setDelegateSaving] = useState(false);
 
   // GTK (Guru & Tenaga Kependidikan) form & filter state
   const [staffEditId, setStaffEditId] = useState<string | undefined>(undefined);
@@ -660,25 +677,87 @@ export const AdminDashboard: React.FC = () => {
   const galFormRef = useRef<HTMLFormElement | null>(null);
   const galLocalBlobRef = useRef<string | null>(null);
 
-  if (!user || !isAdmin) {
+  if (!isAdmin) {
     return (
       <div className="max-w-xl mx-auto px-4 py-16 text-center">
-        <div className="bg-white border border-[#E4E6E1] rounded-xl p-8">
-          <h1 className="font-editorial text-2xl font-semibold text-[#18221D]">
-            Akses Khusus Administrator SDN Cikawao
-          </h1>
-          <p className="text-sm text-[#4A5550] mt-2">
-            Dashboard Admin hanya dapat dibuka oleh akun resmi Kepala Sekolah (
-            {SCHOOL_IDENTITY.principal.email}).
-          </p>
+        <div className="bg-white border-2 border-emerald-200 rounded-3xl p-8 shadow-sm space-y-5">
+          <div className="flex justify-center">
+            <Icon3D name="shield" tone="emerald" size="lg" variant="tile" />
+          </div>
+          <div>
+            <h1 className="font-editorial text-2xl font-semibold text-[#132A2E]">
+              Akses Khusus Administrator SDN Cikawao
+            </h1>
+            <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+              Dashboard Admin dapat dibuka melalui akun resmi Kepala Sekolah (
+              {SCHOOL_IDENTITY.principal.email}) atau akun administrator{' '}
+              <span className="font-semibold text-[#132A2E]">Tim IT SDN Cikawao</span>{' '}
+              menggunakan nomor HP &amp; kata sandi.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => setLoginModalOpen(true)}
+              className="btn-3d w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-indigo-600 border-b-[3px] border-indigo-800 rounded-xl"
+            >
+              <Icon3D name="user-check" tone="white" size="xs" />
+              <span>Login Tim IT (No. HP &amp; Password)</span>
+            </button>
+            <button
+              type="button"
+              disabled={authLoading}
+              onClick={() => void signInWithGoogle()}
+              className="btn-3d w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 border-b-[3px] border-emerald-800 rounded-xl disabled:opacity-60"
+            >
+              <Icon3D name="login" tone="white" size="xs" />
+              <span>{authLoading ? 'Membuka Google...' : 'Masuk Google Kepala Sekolah'}</span>
+            </button>
+          </div>
         </div>
+
+        <PortalLoginModal
+          open={loginModalOpen}
+          initialTab="tim-it"
+          onClose={() => setLoginModalOpen(false)}
+        />
       </div>
     );
   }
 
   const notifySaved = (msg: string) => {
+    setActionError('');
     setStatusFeedback(msg);
     setTimeout(() => setStatusFeedback(''), 3500);
+  };
+
+  const notifyError = (err: unknown, fallback = 'Gagal menyimpan perubahan.') => {
+    const msg =
+      err instanceof Error && !err.message.startsWith('{') ? err.message : fallback;
+    setActionError(msg);
+  };
+
+  const handleDelegateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (delegateSaving) return;
+    setDelegateSaving(true);
+    try {
+      await saveDelegatedAdmin({
+        uid: delegateUid,
+        email: delegateEmail,
+        name: delegateName,
+        roleLabel: delegateRoleLabel,
+      });
+      setDelegateUid('');
+      setDelegateEmail('');
+      setDelegateName('');
+      setDelegateRoleLabel('Tim IT SDN Cikawao');
+      notifySaved('Akses admin delegasi berhasil disimpan ke Firestore.');
+    } catch (err) {
+      notifyError(err, 'Gagal menambahkan akses admin delegasi.');
+    } finally {
+      setDelegateSaving(false);
+    }
   };
 
   const resetStaffForm = () => {
@@ -752,6 +831,8 @@ export const AdminDashboard: React.FC = () => {
         : `Data GTK "${staffFullName.trim()}" berhasil ditambahkan ke direktori sekolah.`;
       resetStaffForm();
       notifySaved(actionMsg);
+    } catch (err) {
+      notifyError(err, 'Gagal menyimpan data GTK.');
     } finally {
       setStaffSaving(false);
     }
@@ -759,78 +840,96 @@ export const AdminDashboard: React.FC = () => {
 
   const handleNewsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await saveNews(
-      {
-        title: newsTitle.trim(),
-        category: newsCat,
-        summary: newsSummary.trim(),
-        content: newsContent.trim(),
-        imageUrl: newsImage,
-        authorName: SCHOOL_IDENTITY.principal.name,
-        status: newsStatus,
-        publishedDate: new Date().toLocaleDateString('id-ID', {
-          day: '2-digit',
-          month: 'long',
-          year: 'numeric',
-        }),
-      },
-      newsIdEdit
-    );
-    setNewsIdEdit(undefined);
-    setNewsTitle('');
-    setNewsSummary('');
-    setNewsContent('');
-    notifySaved('Berita sekolah berhasil disimpan.');
+    try {
+      await saveNews(
+        {
+          title: newsTitle.trim(),
+          category: newsCat,
+          summary: newsSummary.trim(),
+          content: newsContent.trim(),
+          imageUrl: newsImage,
+          authorName:
+            isItAdmin && !isBootstrappedAdmin
+              ? 'Tim IT SDN Cikawao'
+              : SCHOOL_IDENTITY.principal.name,
+          status: newsStatus,
+          publishedDate: new Date().toLocaleDateString('id-ID', {
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric',
+          }),
+        },
+        newsIdEdit
+      );
+      setNewsIdEdit(undefined);
+      setNewsTitle('');
+      setNewsSummary('');
+      setNewsContent('');
+      notifySaved('Berita sekolah berhasil disimpan.');
+    } catch (err) {
+      notifyError(err, 'Gagal menyimpan berita sekolah.');
+    }
   };
 
   const handleAnnSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await saveAnnouncement({
-      title: annTitle.trim(),
-      message: annMsg.trim(),
-      priority: annPriority,
-      targetAudience: annAudience,
-      isActive: true,
-      autoNotifyParents: annAutoNotify,
-      authorName: SCHOOL_IDENTITY.principal.name,
-    });
-    setAnnTitle('');
-    setAnnMsg('');
-    notifySaved('Pengumuman diterbitkan & notifikasi otomatis dikirim ke orang tua.');
+    try {
+      await saveAnnouncement({
+        title: annTitle.trim(),
+        message: annMsg.trim(),
+        priority: annPriority,
+        targetAudience: annAudience,
+        isActive: true,
+        autoNotifyParents: annAutoNotify,
+        authorName:
+          isItAdmin && !isBootstrappedAdmin
+            ? 'Tim IT SDN Cikawao'
+            : SCHOOL_IDENTITY.principal.name,
+      });
+      setAnnTitle('');
+      setAnnMsg('');
+      notifySaved('Pengumuman diterbitkan & notifikasi otomatis dikirim ke orang tua.');
+    } catch (err) {
+      notifyError(err, 'Gagal menerbitkan pengumuman.');
+    }
   };
 
   const handleStudentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await saveStudent(
-      {
-        nisn: stuNisn.replace(/\D/g, ''),
-        nik: stuNik.replace(/\D/g, ''),
-        fullName: stuName.trim(),
-        rombel: stuRombel,
-        gender: stuGender,
-        parentName: stuParentName.trim(),
-        parentEmail: stuParentEmail.trim(),
-        parentUid: '',
-        attendancePercent: Number(stuAttendance),
-        p5ProjectTitle: stuP5Title.trim(),
-        p5Status: stuP5Status,
-        mathScore: Number(stuMath),
-        indoScore: Number(stuIndo),
-        ipasScore: Number(stuIpas),
-        pancasilaScore: Number(stuPancasila),
-        sundaScore: Number(stuSunda),
-        teacherNote: stuNote.trim(),
-      },
-      stuEditId
-    );
-    setStuEditId(undefined);
-    setStuNisn('');
-    setStuNik('');
-    setStuName('');
-    setStuParentName('');
-    setStuParentEmail('');
-    setStuNote('');
-    notifySaved('Data & direktori NISN siswa berhasil diperbarui real-time.');
+    try {
+      await saveStudent(
+        {
+          nisn: stuNisn.replace(/\D/g, ''),
+          nik: stuNik.replace(/\D/g, ''),
+          fullName: stuName.trim(),
+          rombel: stuRombel,
+          gender: stuGender,
+          parentName: stuParentName.trim(),
+          parentEmail: stuParentEmail.trim(),
+          parentUid: '',
+          attendancePercent: Number(stuAttendance),
+          p5ProjectTitle: stuP5Title.trim(),
+          p5Status: stuP5Status,
+          mathScore: Number(stuMath),
+          indoScore: Number(stuIndo),
+          ipasScore: Number(stuIpas),
+          pancasilaScore: Number(stuPancasila),
+          sundaScore: Number(stuSunda),
+          teacherNote: stuNote.trim(),
+        },
+        stuEditId
+      );
+      setStuEditId(undefined);
+      setStuNisn('');
+      setStuNik('');
+      setStuName('');
+      setStuParentName('');
+      setStuParentEmail('');
+      setStuNote('');
+      notifySaved('Data & direktori NISN siswa berhasil diperbarui real-time.');
+    } catch (err) {
+      notifyError(err, 'Gagal menyimpan data siswa.');
+    }
   };
 
   const resetPkksForm = () => {
@@ -1012,6 +1111,8 @@ export const AdminDashboard: React.FC = () => {
         : 'Program, foto & file Jabar Beraksi berhasil diterbitkan.';
       resetJbForm();
       notifySaved(msg);
+    } catch (err) {
+      notifyError(err, 'Gagal menyimpan program Jabar Beraksi.');
     } finally {
       setJbSaving(false);
     }
@@ -1156,6 +1257,8 @@ export const AdminDashboard: React.FC = () => {
         : `${itemLabel} "${galTitle.trim()}" berhasil ditambahkan ke galeri sekolah.`;
       resetGalForm();
       notifySaved(msg);
+    } catch (err) {
+      notifyError(err, 'Gagal menyimpan item galeri sekolah.');
     } finally {
       setGalSaving(false);
     }
@@ -1264,6 +1367,8 @@ export const AdminDashboard: React.FC = () => {
         : 'Program & dokumen SILOKA berhasil ditambahkan.';
       resetSilokaForm();
       notifySaved(msg);
+    } catch (err) {
+      notifyError(err, 'Gagal menyimpan program SILOKA.');
     } finally {
       setSilokaSaving(false);
     }
@@ -1349,16 +1454,31 @@ export const AdminDashboard: React.FC = () => {
           <div className="h-1.5 w-full bg-gradient-to-r from-emerald-400 via-sky-400 via-amber-400 to-violet-500" />
           <div className="p-4 space-y-4">
             <div className="pb-3 border-b border-emerald-100 flex items-center gap-3">
-              <Icon3D name="shield" tone="emerald" size="md" variant="tile" />
+              <Icon3D
+                name="shield"
+                tone={isItAdmin && !isBootstrappedAdmin ? 'sky' : 'emerald'}
+                size="md"
+                variant="tile"
+              />
               <div className="min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">
-                  Admin Kepala Sekolah
+                <p
+                  className={`text-[11px] font-bold uppercase tracking-wider ${
+                    isItAdmin && !isBootstrappedAdmin ? 'text-sky-700' : 'text-emerald-700'
+                  }`}
+                >
+                  {isItAdmin && !isBootstrappedAdmin
+                    ? 'Tim IT SDN Cikawao'
+                    : 'Admin Kepala Sekolah'}
                 </p>
                 <p className="text-sm font-semibold text-[#132A2E] truncate mt-0.5">
-                  {SCHOOL_IDENTITY.principal.name}
+                  {isItAdmin && !isBootstrappedAdmin
+                    ? itAdminSession?.roleLabel || 'Tim IT SDN Cikawao'
+                    : SCHOOL_IDENTITY.principal.name}
                 </p>
-                <p className="text-[11px] font-mono text-sky-700 tabular-nums font-medium">
-                  NIP. {SCHOOL_IDENTITY.principal.nip}
+                <p className="text-[11px] font-mono text-sky-700 tabular-nums font-medium truncate">
+                  {isItAdmin && !isBootstrappedAdmin
+                    ? `No. HP ${itAdminSession?.phoneMasked || '-'}`
+                    : `NIP. ${SCHOOL_IDENTITY.principal.nip}`}
                 </p>
               </div>
             </div>
@@ -1392,6 +1512,61 @@ export const AdminDashboard: React.FC = () => {
 
         {/* Main Admin Workspace */}
         <div className="flex-1 min-w-0 w-full space-y-6">
+          {isItAdmin && !isFirebaseAdmin && (
+            <div className="bg-gradient-to-r from-sky-50 via-white to-indigo-50 border-2 border-sky-300 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+              <div className="flex items-start gap-3">
+                <Icon3D name="user-check" tone="sky" size="md" variant="tile" />
+                <div className="space-y-1 text-xs text-slate-700">
+                  <p className="font-bold text-sky-900">
+                    Mode Akses Tim IT SDN Cikawao Aktif
+                  </p>
+                  <p className="leading-relaxed">
+                    Anda berhasil masuk sebagai{' '}
+                    <span className="font-semibold">Tim IT SDN Cikawao</span>. Untuk
+                    menyimpan atau mengubah data cloud Firestore secara langsung, tautkan akun
+                    Google Anda dan minta Kepala Sekolah mendaftarkan UID berikut di panel{' '}
+                    <span className="font-semibold">Akses Admin Delegasi</span>.
+                  </p>
+                  {user && (
+                    <p className="font-mono text-[11px] bg-white border border-sky-200 rounded-lg px-2.5 py-1 inline-block text-sky-900">
+                      Google: {user.email} · UID: {user.uid}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {!user && (
+                <button
+                  type="button"
+                  disabled={authLoading}
+                  onClick={() => void signInWithGoogle()}
+                  className="btn-3d inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 rounded-xl whitespace-nowrap shrink-0 disabled:opacity-60"
+                >
+                  <Icon3D name="login" tone="white" size="xs" />
+                  <span>{authLoading ? 'Membuka Google...' : 'Tautkan Akun Google'}</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {actionError && (
+            <div
+              role="alert"
+              className="flex items-start justify-between gap-3 text-xs font-semibold text-rose-900 bg-rose-50 border-2 border-rose-300 rounded-2xl px-4 py-3 shadow-xs"
+            >
+              <div className="flex items-start gap-3">
+                <Icon3D name="alert" tone="rose" size="sm" variant="tile" />
+                <span>{actionError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActionError('')}
+                className="px-2.5 py-1 rounded-lg bg-white border border-rose-200 text-rose-800 hover:bg-rose-100 shrink-0"
+              >
+                Tutup
+              </button>
+            </div>
+          )}
+
           {statusFeedback && (
             <div className="flex items-center gap-3 text-xs font-semibold text-emerald-900 bg-gradient-to-r from-emerald-50 via-white to-teal-50 border-2 border-emerald-300 rounded-2xl px-4 py-3 shadow-xs">
               <Icon3D name="check-circle" tone="emerald" size="sm" variant="tile" />
@@ -1417,8 +1592,12 @@ export const AdminDashboard: React.FC = () => {
                   type="button"
                   disabled={seeding}
                   onClick={async () => {
-                    await seedAllInitialData();
-                    notifySaved('Data awal SDN Cikawao berhasil disinkronkan ke Firestore.');
+                    try {
+                      await seedAllInitialData();
+                      notifySaved('Data awal SDN Cikawao berhasil disinkronkan ke Firestore.');
+                    } catch (err) {
+                      notifyError(err, 'Gagal menyinkronkan data awal.');
+                    }
                   }}
                   className="btn-3d inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl whitespace-nowrap shrink-0 disabled:opacity-60"
                 >
@@ -1504,6 +1683,101 @@ export const AdminDashboard: React.FC = () => {
                   </div>
                 </button>
               </div>
+
+              {isBootstrappedAdmin && (
+                <div className="bg-white border-2 border-sky-200 rounded-2xl p-6 space-y-4 shadow-xs">
+                  <div className="flex items-start gap-3">
+                    <Icon3D name="user-check" tone="sky" size="md" variant="tile" />
+                    <div>
+                      <h2 className="font-editorial text-lg font-semibold text-[#132A2E]">
+                        Akses Admin Delegasi (Tim IT SDN Cikawao)
+                      </h2>
+                      <p className="text-xs text-slate-600 mt-0.5">
+                        Daftarkan UID akun Google milik Tim IT agar dapat melakukan penyimpanan dan pembaruan data ke Firestore selain akun Kepala Sekolah.
+                      </p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleDelegateSubmit} className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    <input
+                      type="text"
+                      required
+                      value={delegateUid}
+                      onChange={(e) => setDelegateUid(e.target.value)}
+                      placeholder="UID Google Tim IT"
+                      className="sm:col-span-3 px-3 py-2 text-xs font-mono bg-[#FFFDF7] border border-slate-200 focus:border-sky-500 focus:outline-none rounded-xl"
+                    />
+                    <input
+                      type="email"
+                      required
+                      value={delegateEmail}
+                      onChange={(e) => setDelegateEmail(e.target.value)}
+                      placeholder="Email Google"
+                      className="sm:col-span-3 px-3 py-2 text-xs bg-[#FFFDF7] border border-slate-200 focus:border-sky-500 focus:outline-none rounded-xl"
+                    />
+                    <input
+                      type="text"
+                      required
+                      value={delegateName}
+                      onChange={(e) => setDelegateName(e.target.value)}
+                      placeholder="Nama Pengelola"
+                      className="sm:col-span-2 px-3 py-2 text-xs bg-[#FFFDF7] border border-slate-200 focus:border-sky-500 focus:outline-none rounded-xl"
+                    />
+                    <input
+                      type="text"
+                      required
+                      value={delegateRoleLabel}
+                      onChange={(e) => setDelegateRoleLabel(e.target.value)}
+                      placeholder="Jabatan"
+                      className="sm:col-span-2 px-3 py-2 text-xs bg-[#FFFDF7] border border-slate-200 focus:border-sky-500 focus:outline-none rounded-xl"
+                    />
+                    <button
+                      type="submit"
+                      disabled={delegateSaving}
+                      className="sm:col-span-2 btn-3d px-3 py-2 text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 rounded-xl disabled:opacity-60"
+                    >
+                      {delegateSaving ? 'Menyimpan...' : 'Tambah Admin'}
+                    </button>
+                  </form>
+
+                  {delegatedAdmins.length > 0 && (
+                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                      {delegatedAdmins.map((adm) => (
+                        <div
+                          key={adm.uid}
+                          className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-xs bg-slate-50/50"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-semibold text-[#132A2E]">
+                              {adm.name} ·{' '}
+                              <span className="text-sky-700">{adm.roleLabel}</span>
+                            </p>
+                            <p className="text-[11px] text-slate-500 font-mono truncate">
+                              {adm.email} · UID: {adm.uid}
+                            </p>
+                          </div>
+                          {user && adm.uid !== user.uid && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await removeDelegatedAdmin(adm.uid);
+                                  notifySaved(`Akses admin delegasi "${adm.name}" berhasil dihapus.`);
+                                } catch (err) {
+                                  notifyError(err, 'Gagal menghapus admin delegasi.');
+                                }
+                              }}
+                              className="px-2.5 py-1 text-[11px] font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg"
+                            >
+                              Cabut Akses
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -2438,6 +2712,8 @@ export const AdminDashboard: React.FC = () => {
                           setExcelParseResult(null);
                           setExcelFileName('');
                           if (excelInputRef.current) excelInputRef.current.value = '';
+                        } catch (err) {
+                          notifyError(err, 'Gagal mengimpor data siswa ke Firestore.');
                         } finally {
                           setImportingExcel(false);
                         }
@@ -3536,15 +3812,19 @@ export const AdminDashboard: React.FC = () => {
                           {r.status !== 'terverifikasi' && (
                             <button
                               type="button"
-                              onClick={async () => {
-                                await verifyJabarBeraksi(r.id, 'terverifikasi');
-                                notifySaved(`Program "${r.title}" berhasil diverifikasi.`);
-                              }}
-                              className="btn-3d inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 rounded-lg whitespace-nowrap shrink-0"
-                            >
-                              <Icon3D name="check" tone="white" size="xs" />
-                              Verifikasi
-                            </button>
+                                onClick={async () => {
+                                  try {
+                                    await verifyJabarBeraksi(r.id, 'terverifikasi');
+                                    notifySaved(`Program "${r.title}" berhasil diverifikasi.`);
+                                  } catch (err) {
+                                    notifyError(err, 'Gagal memverifikasi program.');
+                                  }
+                                }}
+                                className="btn-3d inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 rounded-lg whitespace-nowrap shrink-0"
+                              >
+                                <Icon3D name="check" tone="white" size="xs" />
+                                Verifikasi
+                              </button>
                           )}
                           <button
                             type="button"
@@ -3581,10 +3861,14 @@ export const AdminDashboard: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={async () => {
-                                  if (jbEditId === r.id) resetJbForm();
-                                  await removeJabarBeraksi(r.id);
-                                  setConfirmDeleteJbId(null);
-                                  notifySaved(`Program "${r.title}" berhasil dihapus.`);
+                                  try {
+                                    if (jbEditId === r.id) resetJbForm();
+                                    await removeJabarBeraksi(r.id);
+                                    setConfirmDeleteJbId(null);
+                                    notifySaved(`Program "${r.title}" berhasil dihapus.`);
+                                  } catch (err) {
+                                    notifyError(err, 'Gagal menghapus program.');
+                                  }
                                 }}
                                 className="px-2.5 py-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors whitespace-nowrap shrink-0"
                               >
@@ -4210,10 +4494,14 @@ export const AdminDashboard: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={async () => {
-                                      if (silokaEditId === item.id) resetSilokaForm();
-                                      await removeSilokaItem(item.id);
-                                      setConfirmDeleteSilokaId(null);
-                                      notifySaved(`Program SILOKA "${item.title}" berhasil dihapus.`);
+                                      try {
+                                        if (silokaEditId === item.id) resetSilokaForm();
+                                        await removeSilokaItem(item.id);
+                                        setConfirmDeleteSilokaId(null);
+                                        notifySaved(`Program SILOKA "${item.title}" berhasil dihapus.`);
+                                      } catch (err) {
+                                        notifyError(err, 'Gagal menghapus program SILOKA.');
+                                      }
                                     }}
                                     className="px-2.5 py-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors whitespace-nowrap shrink-0"
                                   >
@@ -4309,9 +4597,13 @@ export const AdminDashboard: React.FC = () => {
                             />
                             <button
                               type="button"
-                              onClick={() => {
-                                void respondSilokaComplaint(c.id, draft.status, draft.response);
-                                notifySaved(`Tiket ${c.ticketCode} berhasil diperbarui.`);
+                              onClick={async () => {
+                                try {
+                                  await respondSilokaComplaint(c.id, draft.status, draft.response);
+                                  notifySaved(`Tiket ${c.ticketCode} berhasil diperbarui.`);
+                                } catch (err) {
+                                  notifyError(err, 'Gagal memperbarui respon tiket.');
+                                }
                               }}
                               className="sm:col-span-2 px-3 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg"
                             >
@@ -4789,14 +5081,18 @@ export const AdminDashboard: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={async () => {
-                                  if (galEditId === g.id) resetGalForm();
-                                  await removeGalleryItem(g.id);
-                                  setConfirmDeleteGalId(null);
-                                  notifySaved(
-                                    `${
-                                      g.mediaType === 'video' ? 'Video' : 'Foto'
-                                    } "${g.title}" berhasil dihapus dari galeri.`
-                                  );
+                                  try {
+                                    if (galEditId === g.id) resetGalForm();
+                                    await removeGalleryItem(g.id);
+                                    setConfirmDeleteGalId(null);
+                                    notifySaved(
+                                      `${
+                                        g.mediaType === 'video' ? 'Video' : 'Foto'
+                                      } "${g.title}" berhasil dihapus dari galeri.`
+                                    );
+                                  } catch (err) {
+                                    notifyError(err, 'Gagal menghapus item galeri.');
+                                  }
                                 }}
                                 className="px-2.5 py-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors whitespace-nowrap shrink-0"
                               >

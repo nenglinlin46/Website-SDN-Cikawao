@@ -3,6 +3,7 @@ import { useSchool } from '../context/SchoolContext';
 import { SCHOOL_IMAGES } from '../data/seedData';
 import type { AppTab } from '../types';
 import { Icon3D, type Icon3DName, type Icon3DTone } from './Icon3D';
+import { PortalLoginModal } from './PortalLoginModal';
 
 interface TopNavProps {
   activeTab: AppTab;
@@ -92,9 +93,29 @@ const NAV_ITEMS: Array<{
 ];
 
 export const TopNav: React.FC<TopNavProps> = ({ activeTab, onSelectTab }) => {
-  const { user, isAdmin, authLoading, signInWithGoogle, logout } = useSchool();
+  const {
+    user,
+    isAdmin,
+    isBootstrappedAdmin,
+    isItAdmin,
+    itAdminSession,
+    authLoading,
+    signInWithGoogle,
+    logout,
+  } = useSchool();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [loginModalTab, setLoginModalTab] = useState<'google' | 'tim-it'>('google');
+
+  const isSignedIn = Boolean(user || isItAdmin);
+
+  const openLoginModal = (tab: 'google' | 'tim-it' = 'google') => {
+    setLoginModalTab(tab);
+    setLoginModalOpen(true);
+    setMobileMenuOpen(false);
+    setAccountMenuOpen(false);
+  };
 
   const handleNav = (tab: AppTab) => {
     onSelectTab(tab);
@@ -158,11 +179,11 @@ export const TopNav: React.FC<TopNavProps> = ({ activeTab, onSelectTab }) => {
 
         {/* Zone 3: 1 Primary Action */}
         <div className="flex items-center gap-3 shrink-0 relative">
-          {!user ? (
+          {!isSignedIn ? (
             <button
               type="button"
               disabled={authLoading}
-              onClick={() => void signInWithGoogle()}
+              onClick={() => openLoginModal('google')}
               className="btn-3d hidden sm:inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500 border-b-[3px] border-emerald-700 rounded-xl whitespace-nowrap shrink-0 disabled:opacity-60"
             >
               <Icon3D name="login" tone="white" size="xs" />
@@ -182,7 +203,11 @@ export const TopNav: React.FC<TopNavProps> = ({ activeTab, onSelectTab }) => {
                 {isAdmin ? (
                   <>
                     <Icon3D name="shield" tone="amber" size="xs" />
-                    {activeTab === 'admin' ? 'Akun Kepala Sekolah' : 'Dashboard Admin'}
+                    {activeTab === 'admin'
+                      ? isItAdmin && !isBootstrappedAdmin
+                        ? 'Tim IT SDN Cikawao'
+                        : 'Akun Kepala Sekolah'
+                      : 'Dashboard Admin'}
                   </>
                 ) : (
                   <>
@@ -193,14 +218,26 @@ export const TopNav: React.FC<TopNavProps> = ({ activeTab, onSelectTab }) => {
               </button>
 
               {accountMenuOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-white border border-sky-200 rounded-2xl shadow-xl p-3 z-50">
+                <div className="absolute right-0 mt-2 w-72 bg-white border border-sky-200 rounded-2xl shadow-xl p-3 z-50">
                   <div className="pb-2.5 mb-2.5 border-b border-slate-200">
                     <p className="text-xs font-semibold text-[#132A2E] truncate">
-                      {user.displayName || 'Pengguna Portal'}
+                      {isItAdmin && !isBootstrappedAdmin
+                        ? itAdminSession?.roleLabel || 'Tim IT SDN Cikawao'
+                        : user?.displayName || 'Pengguna Portal'}
                     </p>
-                    <p className="text-[11px] text-slate-500 truncate">{user.email}</p>
+                    <p className="text-[11px] text-slate-500 truncate">
+                      {isItAdmin && itAdminSession
+                        ? `No. HP ${itAdminSession.phoneMasked}${user?.email ? ` · ${user.email}` : ''}`
+                        : user?.email}
+                    </p>
                     <p className="text-[11px] font-semibold text-emerald-700 mt-1">
-                      {isAdmin ? 'Administrator / Kepala Sekolah' : 'Orang Tua / Masyarakat'}
+                      {isBootstrappedAdmin
+                        ? 'Administrator / Kepala Sekolah'
+                        : isItAdmin
+                        ? 'Administrator Teknis · Tim IT SDN Cikawao'
+                        : isAdmin
+                        ? 'Administrator Delegasi SDN Cikawao'
+                        : 'Orang Tua / Masyarakat'}
                     </p>
                   </div>
                   {isAdmin && (
@@ -211,6 +248,30 @@ export const TopNav: React.FC<TopNavProps> = ({ activeTab, onSelectTab }) => {
                     >
                       <Icon3D name="dashboard" tone="emerald" size="xs" />
                       <span>Buka Dashboard Admin</span>
+                    </button>
+                  )}
+                  {!isItAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => openLoginModal('tim-it')}
+                      className="w-full flex items-center gap-2 text-left px-3 py-2 text-xs font-semibold text-sky-800 bg-sky-50/70 hover:bg-sky-100 rounded-xl transition-colors mb-1.5"
+                    >
+                      <Icon3D name="user-check" tone="sky" size="xs" />
+                      <span>Masuk sebagai Tim IT</span>
+                    </button>
+                  )}
+                  {isItAdmin && !user && (
+                    <button
+                      type="button"
+                      disabled={authLoading}
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        void signInWithGoogle();
+                      }}
+                      className="w-full flex items-center gap-2 text-left px-3 py-2 text-xs font-semibold text-sky-800 bg-sky-50/70 hover:bg-sky-100 rounded-xl transition-colors mb-1.5 disabled:opacity-60"
+                    >
+                      <Icon3D name="login" tone="sky" size="xs" />
+                      <span>Tautkan Akun Google</span>
                     </button>
                   )}
                   <button
@@ -272,16 +333,26 @@ export const TopNav: React.FC<TopNavProps> = ({ activeTab, onSelectTab }) => {
           ))}
 
           <div className="pt-3 mt-2 border-t border-slate-200 space-y-2">
-            {!user ? (
-              <button
-                type="button"
-                disabled={authLoading}
-                onClick={() => void signInWithGoogle()}
-                className="btn-3d w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-sky-500 border-b-[3px] border-emerald-700 rounded-xl"
-              >
-                <Icon3D name="login" tone="white" size="xs" />
-                Masuk Portal
-              </button>
+            {!isSignedIn ? (
+              <div className="grid grid-cols-1 gap-2">
+                <button
+                  type="button"
+                  disabled={authLoading}
+                  onClick={() => openLoginModal('google')}
+                  className="btn-3d w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-sky-500 border-b-[3px] border-emerald-700 rounded-xl"
+                >
+                  <Icon3D name="login" tone="white" size="xs" />
+                  Masuk Portal (Google / Tim IT)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openLoginModal('tim-it')}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-sky-800 bg-sky-50 border border-sky-200 rounded-xl hover:bg-sky-100"
+                >
+                  <Icon3D name="user-check" tone="sky" size="xs" />
+                  Login Tim IT SDN Cikawao
+                </button>
+              </div>
             ) : (
               <>
                 {isAdmin && (
@@ -303,13 +374,20 @@ export const TopNav: React.FC<TopNavProps> = ({ activeTab, onSelectTab }) => {
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100"
                 >
                   <Icon3D name="logout" tone="rose" size="xs" />
-                  Keluar ({user.email})
+                  Keluar ({isItAdmin && !isBootstrappedAdmin ? itAdminSession?.roleLabel || 'Tim IT' : user?.email || 'Akun'})
                 </button>
               </>
             )}
           </div>
         </div>
       )}
+
+      <PortalLoginModal
+        open={loginModalOpen}
+        initialTab={loginModalTab}
+        onClose={() => setLoginModalOpen(false)}
+        onAdminAuthenticated={() => handleNav('admin')}
+      />
     </header>
   );
 };

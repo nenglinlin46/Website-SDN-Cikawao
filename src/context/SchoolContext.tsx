@@ -52,7 +52,10 @@ import type { ParsedDaftarPdRow } from '../utils/daftarPdExcel';
 import { hashNikSha256 } from '../utils/hashNik';
 import type {
   Announcement,
+  DelegatedAdminRole,
   GalleryItem,
+  ItAdminSession,
+  ItAdminStatus,
   JabarBeraksiReport,
   NewsArticle,
   NisnDirectoryEntry,
@@ -78,11 +81,27 @@ interface SchoolContextValue {
   authReady: boolean;
   isAdmin: boolean;
   isBootstrappedAdmin: boolean;
+  isFirebaseAdmin: boolean;
+  isItAdmin: boolean;
+  itAdminSession: ItAdminSession | null;
+  itAdminStatus: ItAdminStatus;
+  delegatedAdmins: DelegatedAdminRole[];
   authLoading: boolean;
   authError: string | null;
   clearAuthError: () => void;
   signInWithGoogle: () => Promise<void>;
+  refreshItAdminStatus: () => Promise<ItAdminStatus>;
+  setupItAdmin: (phone: string, password: string) => Promise<void>;
+  loginItAdmin: (phone: string, password: string) => Promise<void>;
+  logoutItAdmin: () => Promise<void>;
   logout: () => Promise<void>;
+  saveDelegatedAdmin: (data: {
+    uid: string;
+    email: string;
+    name: string;
+    roleLabel: string;
+  }) => Promise<void>;
+  removeDelegatedAdmin: (uid: string) => Promise<void>;
 
   news: NewsArticle[];
   announcements: Announcement[];
@@ -211,12 +230,22 @@ function dataUrlToBlobUrl(dataUrl: string, fallbackMime = 'video/mp4'): string {
   return URL.createObjectURL(blob);
 }
 
+const FIRESTORE_ADMIN_LINK_REQUIRED_MSG =
+  'Sesi Tim IT aktif, namun perubahan database cloud memerlukan akun Google yang terdaftar pada Admin Delegasi oleh Kepala Sekolah.';
+
 export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [adminDocExists, setAdminDocExists] = useState(false);
+  const [delegatedAdmins, setDelegatedAdmins] = useState<DelegatedAdminRole[]>([]);
+  const [itAdminSession, setItAdminSession] = useState<ItAdminSession | null>(null);
+  const [itAdminStatus, setItAdminStatus] = useState<ItAdminStatus>({
+    configured: false,
+    mode: 'needs-setup',
+    roleLabel: 'Tim IT SDN Cikawao',
+  });
 
   const [liveNews, setLiveNews] = useState<NewsArticle[] | null>(null);
   const [liveAnnouncements, setLiveAnnouncements] = useState<Announcement[] | null>(null);
@@ -247,7 +276,37 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const isBootstrappedAdmin = Boolean(
     user && user.emailVerified && user.email === ADMIN_EMAIL
   );
-  const isAdmin = isBootstrappedAdmin || adminDocExists;
+  const isFirebaseAdmin = isBootstrappedAdmin || adminDocExists;
+  const isItAdmin = Boolean(itAdminSession);
+  const isAdmin = isFirebaseAdmin || isItAdmin;
+
+  const refreshItAdminStatus = useCallback(async (): Promise<ItAdminStatus> => {
+    try {
+      const res = await fetch('/api/it-admin/status', { cache: 'no-store' });
+      if (!res.ok) {
+        return itAdminStatus;
+      }
+      const data = (await res.json()) as Partial<ItAdminStatus>;
+      const normalized: ItAdminStatus = {
+        configured: Boolean(data.configured),
+        mode:
+          data.mode === 'env' || data.mode === 'claimed' || data.mode === 'needs-setup'
+            ? data.mode
+            : 'needs-setup',
+        roleLabel: typeof data.roleLabel === 'string' && data.roleLabel ? data.roleLabel : 'Tim IT SDN Cikawao',
+      };
+      setItAdminStatus(normalized);
+      return normalized;
+    } catch {
+      return itAdminStatus;
+    }
+  }, [itAdminStatus]);
+
+  useEffect(() => {
+    void refreshItAdminStatus();
+    // Fetch initial Tim IT activation mode once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (nextUser) => {
@@ -255,6 +314,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setAuthReady(true);
       if (!nextUser) {
         setAdminDocExists(false);
+        setDelegatedAdmins([]);
         setStudents([]);
         setLinkRequests([]);
         setSilokaComplaints([]);
@@ -288,14 +348,15 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, []);
 
-  // Check /admins/{uid} when signed in
+  // Check /admins/{uid} when signed in & list delegated admins for bootstrapped principal
   useEffect(() => {
     if (!authReady || !user || !user.emailVerified) {
       setAdminDocExists(false);
+      setDelegatedAdmins([]);
       return;
     }
     const adminRef = doc(db, 'admins', user.uid);
-    const unsub = onSnapshot(
+    const unsubSelf = onSnapshot(
       adminRef,
       (snap) => {
         setAdminDocExists(snap.exists());
@@ -304,8 +365,37 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setAdminDocExists(false);
       }
     );
-    return () => unsub();
-  }, [authReady, user]);
+
+    let unsubList = () => {};
+    if (isBootstrappedAdmin) {
+      unsubList = onSnapshot(
+        collection(db, 'admins'),
+        (snap) => {
+          const rows = snap.docs.map((d) => {
+            const raw = d.data() as Partial<DelegatedAdminRole>;
+            return {
+              uid: raw.uid || d.id,
+              email: raw.email || '',
+              name: raw.name || '',
+              roleLabel: raw.roleLabel || 'Tim IT SDN Cikawao',
+              createdAt: raw.createdAt,
+            };
+          });
+          setDelegatedAdmins(rows);
+        },
+        () => {
+          setDelegatedAdmins([]);
+        }
+      );
+    } else {
+      setDelegatedAdmins([]);
+    }
+
+    return () => {
+      unsubSelf();
+      unsubList();
+    };
+  }, [authReady, user, isBootstrappedAdmin]);
 
   // Public & role-scoped listeners
   useEffect(() => {
@@ -655,8 +745,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, [authReady, user, isBootstrappedAdmin]);
 
+  const requireFirebaseAdmin = useCallback(() => {
+    if (!user || !isFirebaseAdmin) {
+      if (isItAdmin) {
+        throw new Error(FIRESTORE_ADMIN_LINK_REQUIRED_MSG);
+      }
+      throw new Error('Silakan masuk sebagai Admin terlebih dahulu untuk menyimpan perubahan.');
+    }
+  }, [user, isFirebaseAdmin, isItAdmin]);
+
   const seedAllInitialData = useCallback(async () => {
-    if (!user || !isAdmin) return;
+    requireFirebaseAdmin();
+    if (!user) return;
     setSeeding(true);
     try {
       const [
@@ -915,7 +1015,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } finally {
       setSeeding(false);
     }
-  }, [user, isAdmin]);
+  }, [user, requireFirebaseAdmin]);
 
   // Auto-seed once when Admin logs in and Firestore collections are empty
   useEffect(() => {
@@ -1031,13 +1131,132 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [authLoading]);
 
+  const setupItAdmin = useCallback(async (phone: string, password: string) => {
+    setAuthError(null);
+    const res = await fetch('/api/it-admin/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, password }),
+    });
+    const payload = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      token?: string;
+      session?: { roleLabel?: string; phoneMasked?: string };
+    };
+    if (!res.ok || !payload.token || !payload.session) {
+      throw new Error(payload.error || 'Gagal mengaktifkan akses Tim IT.');
+    }
+    const roleLabel = payload.session.roleLabel || 'Tim IT SDN Cikawao';
+    setItAdminSession({
+      token: payload.token,
+      roleLabel,
+      phoneMasked: payload.session.phoneMasked || '',
+    });
+    setItAdminStatus({
+      configured: true,
+      mode: 'claimed',
+      roleLabel,
+    });
+  }, []);
+
+  const loginItAdmin = useCallback(async (phone: string, password: string) => {
+    setAuthError(null);
+    const res = await fetch('/api/it-admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, password }),
+    });
+    const payload = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      token?: string;
+      session?: { roleLabel?: string; phoneMasked?: string };
+    };
+    if (!res.ok || !payload.token || !payload.session) {
+      throw new Error(payload.error || 'Nomor HP atau kata sandi Tim IT tidak sesuai.');
+    }
+    setItAdminSession({
+      token: payload.token,
+      roleLabel: payload.session.roleLabel || 'Tim IT SDN Cikawao',
+      phoneMasked: payload.session.phoneMasked || '',
+    });
+  }, []);
+
+  const logoutItAdmin = useCallback(async () => {
+    const token = itAdminSession?.token;
+    setItAdminSession(null);
+    if (token) {
+      await fetch('/api/it-admin/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
+  }, [itAdminSession]);
+
   const logout = useCallback(async () => {
     try {
-      await signOut(auth);
+      await logoutItAdmin();
+      if (auth.currentUser) {
+        await signOut(auth);
+      }
     } catch {
       setAuthError('Gagal keluar dari akun. Silakan muat ulang halaman.');
     }
-  }, []);
+  }, [logoutItAdmin]);
+
+  const saveDelegatedAdmin: SchoolContextValue['saveDelegatedAdmin'] = async (data) => {
+    if (!user || !isBootstrappedAdmin) {
+      throw new Error('Hanya akun Kepala Sekolah yang dapat mengelola akses Admin Delegasi.');
+    }
+    const cleanUid = data.uid.trim();
+    const cleanEmail = data.email.trim().slice(0, 180);
+    const cleanName = data.name.trim().slice(0, 120);
+    const cleanRoleLabel = data.roleLabel.trim().slice(0, 80) || 'Tim IT SDN Cikawao';
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(cleanUid)) {
+      throw new Error('Format UID Google tidak valid.');
+    }
+    if (cleanEmail.length < 5 || !cleanEmail.includes('@')) {
+      throw new Error('Masukkan alamat email Google yang valid.');
+    }
+    if (cleanName.length < 2) {
+      throw new Error('Nama administrator minimal 2 karakter.');
+    }
+
+    const ref = doc(db, 'admins', cleanUid);
+    const snap = await getDoc(ref);
+    try {
+      if (snap.exists()) {
+        await updateDoc(ref, {
+          email: cleanEmail,
+          name: cleanName,
+          roleLabel: cleanRoleLabel,
+        });
+      } else {
+        await setDoc(ref, {
+          uid: cleanUid,
+          email: cleanEmail,
+          name: cleanName,
+          roleLabel: cleanRoleLabel,
+          createdAt: serverTimestamp(),
+        });
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `admins/${cleanUid}`);
+    }
+  };
+
+  const removeDelegatedAdmin = async (uid: string) => {
+    if (!user || !isBootstrappedAdmin) {
+      throw new Error('Hanya akun Kepala Sekolah yang dapat menghapus akses Admin Delegasi.');
+    }
+    if (uid === user.uid) {
+      throw new Error('Tidak dapat menghapus akun Kepala Sekolah utama.');
+    }
+    try {
+      await deleteDoc(doc(db, 'admins', uid));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `admins/${uid}`);
+    }
+  };
 
   // Strictly show only inputted news (excluding removed seed articles)
   const news = useMemo(() => {
@@ -1112,6 +1331,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // --- CRUD Handlers ---
   const saveNews: SchoolContextValue['saveNews'] = async (data, existingId) => {
+    requireFirebaseAdmin();
     if (!user) return;
     const id = existingId || makeId('news');
     const path = `news/${id}`;
@@ -1149,6 +1369,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const removeNews = async (id: string) => {
+    requireFirebaseAdmin();
     try {
       await deleteDoc(doc(db, 'news', id));
     } catch (err) {
@@ -1157,6 +1378,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const saveAnnouncement: SchoolContextValue['saveAnnouncement'] = async (data, existingId) => {
+    requireFirebaseAdmin();
     if (!user) return;
     const id = existingId || makeId('ann');
     try {
@@ -1191,6 +1413,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const removeAnnouncement = async (id: string) => {
+    requireFirebaseAdmin();
     try {
       await deleteDoc(doc(db, 'announcements', id));
     } catch (err) {
@@ -1256,6 +1479,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const saveGalleryItem: SchoolContextValue['saveGalleryItem'] = async (data, existingId) => {
+    requireFirebaseAdmin();
     if (!user) return;
     const id = existingId || makeId('gal');
     const path = `gallery/${id}`;
@@ -1348,6 +1572,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const removeGalleryItem = async (id: string) => {
+    requireFirebaseAdmin();
     if (!user) return;
     const path = `gallery/${id}`;
     try {
@@ -1413,6 +1638,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   const saveStudent: SchoolContextValue['saveStudent'] = async (data, existingId) => {
+    requireFirebaseAdmin();
     if (!user) return;
     const nisnClean = data.nisn.replace(/\D/g, '').slice(0, 20);
     const nikClean = (data.nik || '').replace(/\D/g, '').slice(0, 20);
@@ -1473,6 +1699,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const importStudentsBulk: SchoolContextValue['importStudentsBulk'] = async (rows) => {
+    requireFirebaseAdmin();
     if (!user) return { created: 0, updated: 0 };
     const validRows = rows.filter((r) => r.isValid);
     if (validRows.length === 0) return { created: 0, updated: 0 };
@@ -1605,6 +1832,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const removeStudent = async (id: string) => {
+    requireFirebaseAdmin();
     try {
       await deleteDoc(doc(db, 'students', id));
       await deleteDoc(doc(db, 'nisn_directory', id)).catch(() => {});
@@ -1639,6 +1867,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     req,
     action
   ) => {
+    requireFirebaseAdmin();
     if (!user) return;
     try {
       const batch = writeBatch(db);
@@ -1666,9 +1895,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const savePkksItem: SchoolContextValue['savePkksItem'] = async (data, existingId) => {
-    if (!user) {
-      throw new Error('Silakan masuk sebagai Admin terlebih dahulu untuk menyimpan perubahan PKKS.');
-    }
+    requireFirebaseAdmin();
+    if (!user) return;
     const id = existingId || makeId('pkks');
     const path = `pkks_items/${id}`;
     const cleanCode = data.code.trim().slice(0, 24);
@@ -1760,6 +1988,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const removePkksItem = async (id: string) => {
+    requireFirebaseAdmin();
     if (!user) return;
     const path = `pkks_items/${id}`;
     try {
@@ -1793,7 +2022,12 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const saveJabarBeraksi: SchoolContextValue['saveJabarBeraksi'] = async (data, existingId) => {
-    if (!user) return;
+    if (!user) {
+      if (isItAdmin) {
+        throw new Error(FIRESTORE_ADMIN_LINK_REQUIRED_MSG);
+      }
+      throw new Error('Silakan masuk terlebih dahulu untuk mengirim laporan Jabar Beraksi.');
+    }
     const id = existingId || makeId('jb');
     const cleanFileName = data.fileName.trim().slice(0, 200);
     const cleanFileUrl = data.fileUrl.trim().slice(0, 700000);
@@ -1828,7 +2062,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           fileName: cleanFileName,
           fileUrl: cleanFileUrl,
           fileSize: cleanFileSize,
-          status: isAdmin ? data.status : 'menunggu',
+          status: isFirebaseAdmin ? data.status : 'menunggu',
           authorUid: user.uid,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -1840,6 +2074,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const verifyJabarBeraksi = async (id: string, status: 'terverifikasi' | 'menunggu') => {
+    requireFirebaseAdmin();
     try {
       await updateDoc(doc(db, 'jabar_beraksi', id), {
         status,
@@ -1851,6 +2086,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const removeJabarBeraksi = async (id: string) => {
+    requireFirebaseAdmin();
     try {
       await deleteDoc(doc(db, 'jabar_beraksi', id));
     } catch (err) {
@@ -1889,12 +2125,15 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     status,
     adminResponse
   ) => {
+    requireFirebaseAdmin();
     if (!user) return;
     try {
       await updateDoc(doc(db, 'siloka_complaints', id), {
         status,
         adminResponse: adminResponse.slice(0, 2000),
-        respondedBy: 'Neng Linlin Irmawati, S.Pd. (Kepala Sekolah)',
+        respondedBy: isBootstrappedAdmin
+          ? 'Neng Linlin Irmawati, S.Pd. (Kepala Sekolah)'
+          : 'Tim IT SDN Cikawao',
         updatedAt: serverTimestamp(),
       });
     } catch (err) {
@@ -1919,6 +2158,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const saveSilokaItem: SchoolContextValue['saveSilokaItem'] = async (data, existingId) => {
+    requireFirebaseAdmin();
     if (!user) return;
     const id = existingId || makeId('slkitem');
     const path = `siloka_items/${id}`;
@@ -1997,6 +2237,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const removeSilokaItem = async (id: string) => {
+    requireFirebaseAdmin();
     if (!user) return;
     const path = `siloka_items/${id}`;
     try {
@@ -2027,6 +2268,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const saveStaffMember: SchoolContextValue['saveStaffMember'] = async (data, existingId) => {
+    requireFirebaseAdmin();
     if (!user) return;
     const id = existingId || makeId('staff');
     const path = `staff/${id}`;
@@ -2098,6 +2340,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const removeStaffMember = async (id: string) => {
+    requireFirebaseAdmin();
     if (!user) return;
     const path = `staff/${id}`;
     try {
@@ -2144,11 +2387,22 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         authReady,
         isAdmin,
         isBootstrappedAdmin,
+        isFirebaseAdmin,
+        isItAdmin,
+        itAdminSession,
+        itAdminStatus,
+        delegatedAdmins,
         authLoading,
         authError,
         clearAuthError,
         signInWithGoogle,
+        refreshItAdminStatus,
+        setupItAdmin,
+        loginItAdmin,
+        logoutItAdmin,
         logout,
+        saveDelegatedAdmin,
+        removeDelegatedAdmin,
         news,
         announcements,
         gallery,
